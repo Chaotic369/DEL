@@ -389,12 +389,12 @@
             if (bodyObj) options.body = payloadStr;
 
             try {
-                const res = await fetch(REST_URL + path, options);
-                return await res.json();
-            } catch(e) {
-                console.error("Delta REST Error", e);
-                return null;
-            }
+                            const res = await fetch(REST_URL + path, options);
+                            return await res.json();
+                        } catch(e) {
+                            console.error("Delta REST Error", e);
+                            return { success: false, error: e.message || "Network/CORS error" };
+                        }
         }
 
         // Initial Setup Fetch (Public API)
@@ -409,54 +409,60 @@
         }
 
         async function fetchBalance() {
-            const res = await deltaRestAuth("GET", "/v2/wallet/balances");
-            if (res && res.success && res.result) {
-                let usdtBal = res.result.find(b => b.asset_symbol === 'USDT');
-                if (usdtBal) {
-                    document.getElementById('balance-display').innerText = `$${parseFloat(usdtBal.balance).toFixed(2)}`;
+                    const res = await deltaRestAuth("GET", "/v2/wallet/balances");
+                    if (res && res.success && res.result) {
+                        let usdtBal = res.result.find(b => b.asset_symbol === 'USDT');
+                        if (usdtBal) {
+                            document.getElementById('balance-display').innerText = `$${parseFloat(usdtBal.balance).toFixed(2)}`;
+                        }
+                    } else {
+                        document.getElementById('balance-display').innerText = `ERR`;
+                        document.getElementById('balance-display').style.color = '#f6465d';
+                    }
                 }
-            }
-        }
 
         async function fetchPositions() {
-            const list = document.getElementById('tradeList');
-            if (!API_SECRET) {
-                list.innerHTML = `<div style="color:#f6465d; text-align:center; padding:20px; font-size:12px; font-weight:bold;">API SECRET REQUIRED IN SCRIPT TO VIEW POSITIONS</div>`;
-                return;
-            }
+                    const list = document.getElementById('tradeList');
+                    if (!API_SECRET) {
+                        list.innerHTML = `<div style="color:#f6465d; text-align:center; padding:20px; font-size:12px; font-weight:bold;">API SECRET REQUIRED IN SCRIPT TO VIEW POSITIONS</div>`;
+                        return;
+                    }
             
-            const res = await deltaRestAuth("GET", "/v2/positions/margined");
-            if (res && res.success && res.result) {
-                let openPos = res.result.filter(p => parseFloat(p.size) !== 0);
+                    const res = await deltaRestAuth("GET", "/v2/positions/margined");
+                    if (res && res.success && res.result) {
+                        let openPos = res.result.filter(p => parseFloat(p.size) !== 0);
                 
-                if (openPos.length === 0) {
-                    list.innerHTML = '<div style="color:var(--text-muted); text-align:center; padding:20px; font-size:12px; font-weight:bold; letter-spacing:0.05em;">NO OPEN POSITIONS</div>';
-                    return;
-                }
+                        if (openPos.length === 0) {
+                            list.innerHTML = '<div style="color:var(--text-muted); text-align:center; padding:20px; font-size:12px; font-weight:bold; letter-spacing:0.05em;">NO OPEN POSITIONS</div>';
+                            return;
+                        }
                 
-                let html = '';
-                openPos.forEach(p => {
-                    let size = parseFloat(p.size);
-                    let side = size > 0 ? 'LONG' : 'SHORT';
-                    let color = side === 'LONG' ? '#0ecb81' : '#f6465d';
-                    let pnl = parseFloat(p.realized_pnl || 0) + parseFloat(p.unrealized_pnl || 0);
-                    let pnlColor = pnl >= 0 ? '#0ecb81' : '#f6465d';
+                        let html = '';
+                        openPos.forEach(p => {
+                            let size = parseFloat(p.size);
+                            let side = size > 0 ? 'LONG' : 'SHORT';
+                            let color = side === 'LONG' ? '#0ecb81' : '#f6465d';
+                            let pnl = parseFloat(p.realized_pnl || 0) + parseFloat(p.unrealized_pnl || 0);
+                            let pnlColor = pnl >= 0 ? '#0ecb81' : '#f6465d';
                     
-                    html += `
-                    <div style="display:flex; justify-content:space-between; background:var(--bg-btn); padding:12px; border-radius:16px; border-left:4px solid ${color}; margin-bottom:10px;">
-                        <div style="display:flex; flex-direction:column; gap:4px; align-items:flex-start;">
-                            <span style="font-weight:bold; color:var(--text-main); font-size:12px;">${p.symbol} <span style="color:${color}; font-size:10px;">[${side}]</span></span>
-                            <span style="color:#aaa; font-size:10px;">QTY: ${Math.abs(size)}</span>
-                        </div>
-                        <div style="display:flex; flex-direction:column; gap:4px; text-align:right;">
-                            <span style="font-weight:bold; font-size:12px; color:var(--text-muted);">PnL</span>
-                            <span style="font-weight:bold; font-size:12px; color:${pnlColor};">$${pnl.toFixed(2)}</span>
-                        </div>
-                    </div>`;
-                });
-                list.innerHTML = html;
-            }
-        }
+                            html += `
+                            <div style="display:flex; justify-content:space-between; background:var(--bg-btn); padding:12px; border-radius:16px; border-left:4px solid ${color}; margin-bottom:10px;">
+                                <div style="display:flex; flex-direction:column; gap:4px; align-items:flex-start;">
+                                    <span style="font-weight:bold; color:var(--text-main); font-size:12px;">${p.symbol} <span style="color:${color}; font-size:10px;">[${side}]</span></span>
+                                    <span style="color:#aaa; font-size:10px;">QTY: ${Math.abs(size)}</span>
+                                </div>
+                                <div style="display:flex; flex-direction:column; gap:4px; text-align:right;">
+                                    <span style="font-weight:bold; font-size:12px; color:var(--text-muted);">PnL</span>
+                                    <span style="font-weight:bold; font-size:12px; color:${pnlColor};">$${pnl.toFixed(2)}</span>
+                                </div>
+                            </div>`;
+                        });
+                        list.innerHTML = html;
+                    } else {
+                        let errMsg = res ? (typeof res.error === 'string' ? res.error : (res.error?.message || res.message || JSON.stringify(res))) : "Network Error";
+                        list.innerHTML = `<div style="color:#f6465d; text-align:center; padding:20px; font-size:12px; font-weight:bold;">API ERROR:<br>${errMsg}</div>`;
+                    }
+                }
 
         // Order Execution
         async function executeTrade(side) {
@@ -484,17 +490,22 @@
             };
             
             const res = await deltaRestAuth("POST", "/v2/orders", payload);
-            if (res && res.success) {
-                playAlert('buy');
-                alert(`Successfully placed MARKET ${side.toUpperCase()} for ${qty} ${currentPair}.`);
-                fetchBalance();
-                fetchPositions();
-            } else if (res && res.error) {
-                alert("Delta API Error: " + res.error.message);
-            } else {
-                alert("An unknown error occurred placing the trade.");
-            }
-        }
+                        if (res && res.success) {
+                            playAlert('buy');
+                            alert(`Successfully placed MARKET ${side.toUpperCase()} for ${qty} ${currentPair}.`);
+                            fetchBalance();
+                            fetchPositions();
+                        } else {
+                            let errMsg = "Unknown Error";
+                            if (res) {
+                                if (typeof res.error === 'string') errMsg = res.error;
+                                else if (res.error && res.error.message) errMsg = res.error.message;
+                                else if (res.message) errMsg = res.message;
+                                else errMsg = JSON.stringify(res);
+                            }
+                            alert("Delta API Error: " + errMsg + "\n\n(Verify your API Keys are active and have sufficient margin/permissions)");
+                        }
+                    }
 
         document.getElementById('trade-btn-long').addEventListener('click', () => executeTrade("buy"));
         document.getElementById('trade-btn-short').addEventListener('click', () => executeTrade("sell"));
