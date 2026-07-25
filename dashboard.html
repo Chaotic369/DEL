@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Delta Exchange Trading Dashboard</title>
+
+    <meta name="theme-color" content="#000000">
+    <!-- Required for Delta Exchange HMAC SHA256 Signature Generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+
+    <style>
+        :root {
+            --bg-main: #f0f0f0;
+            --bg-panel: #ffffff;
+            --bg-btn: #e6e6e6;
+            --text-main: #222222;
+            --text-muted: #666666;
+            --accent: #6C5CE7; /* Delta Blue/Purple Accent */
+            --grid-line: rgba(0, 0, 0, 0.1);
+        }
+        body.theme-black {
+            --bg-main: #0b0e11;
+            --bg-panel: #181a20;
+            --bg-btn: #2b3139;
+            --text-main: #eaecef;
+            --text-muted: #848e9c;
+            --accent: #6C5CE7;
+            --grid-line: rgba(255, 255, 255, 0.05);
+        }
+        body.theme-white {
+            --bg-main: #f0f0f0;
+            --bg-panel: #ffffff;
+            --bg-btn: #e6e6e6;
+            --text-main: #222222;
+            --text-muted: #666666;
+            --accent: #6C5CE7;
+            --grid-line: rgba(0, 0, 0, 0.1);
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-main);
+            color: var(--text-main);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            height: 100vh;
+            box-sizing: border-box;
+            transition: background 0.3s, color 0.3s;
+        }
+
+        svg[stroke="#ffcc00"] { stroke: var(--accent) !important; }
+        svg[fill="#ffcc00"] { fill: var(--accent) !important; }
+        
+        button, input, select, textarea, div {
+            outline: none !important;
+            -webkit-tap-highlight-color: transparent !important;
+        }
+
+        .dashboard-container {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            background: var(--bg-main);
+            padding-top: env(safe-area-inset-top, 16px);
+        }
+
+        .category-title {
+            font-size: 12px;
+            font-weight: bold;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+            letter-spacing: 1px;
+            border-bottom: 1px dashed var(--grid-line);
+            padding-bottom: 6px;
+            text-transform: uppercase;
+        }
+        .category-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .asset-select-btn {
+            background: var(--bg-btn);
+            color: var(--text-main);
+            border: none;
+            padding: 12px 8px;
+            font-size: 13px;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 20px;
+            text-align: center;
+            transition: all 0.2s;
+        }
+        .asset-select-btn:hover {
+            background: rgba(108, 92, 231, 0.1);
+            color: var(--accent);
+        }
+        .asset-select-btn.active {
+            background: var(--bg-main);
+            color: var(--accent);
+            box-shadow: inset 0 0 0 1px var(--accent);
+        }
+
+        .bottom-controls {
+            display: flex;
+            flex-direction: column;
+            flex: 0 0 auto;
+            border-radius: 36px 36px 0 0;
+            margin-top: auto;
+            background-color: var(--bg-panel);
+            gap: 12px;
+            padding: 20px 16px calc(24px + env(safe-area-inset-bottom, 16px)) 16px;
+            justify-content: flex-start;
+            align-items: center;
+            box-shadow: 0 -5px 25px rgba(0,0,0,0.4);
+            z-index: 10;
+        }
+
+        input {
+            background-color: var(--bg-btn);
+            color: var(--text-main);
+            border: none;
+            padding: 6px;
+            border-radius: 12px;
+            text-align: center;
+            font-family: inherit;
+        }
+        input[type=number]::-webkit-inner-spin-button,
+        input[type=number]::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+
+        .action-btn {
+            border: none;
+            padding: 6px 8px !important;
+            font-size: 10px;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 16px;
+            background: var(--bg-btn);
+            transition: transform 0.1s;
+        }
+        .action-btn:active { transform: scale(0.95); }
+        .btn-log { color: var(--text-muted); }
+        .btn-call { color: #0ecb81; }
+        .btn-put { color: #f6465d; }
+
+        .chart-section {
+            flex: 0 0 50%;
+            background-color: var(--bg-main);
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: row;
+        }
+
+        #canvas-wrapper { width: 100%; height: 100%; position: relative; }
+        #custom-chart { width: 100%; height: 100%; display: block; }
+
+        .floating-timeframe {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: var(--bg-panel);
+            border-radius: 16px;
+            padding: 6px 10px;
+            z-index: 20;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+        }
+        .floating-timeframe-top { display: flex; align-items: center; }
+        .floating-timeframe input {
+            width: 45px;
+            font-size: 12px;
+            background: transparent;
+            color: var(--text-main);
+            text-align: center;
+            font-weight: bold;
+            padding: 0;
+            cursor: pointer;
+        }
+        
+        .quick-time-btn { 
+            background: var(--bg-btn); 
+            color: var(--text-muted); 
+            border: none; 
+            padding: 2px 6px; 
+            font-size: 10px; 
+            cursor: pointer; 
+            border-radius: 12px; 
+            font-weight: bold; 
+        }
+        .quick-time-btn:hover { color: var(--text-main); }
+
+        #loading-text {
+            color: var(--accent);
+            font-weight: bold;
+            letter-spacing: 2px;
+            z-index: 10;
+            position: absolute;
+            top: 50%;
+            left: 35%;
+            transform: translate(-50%, -50%);
+        }
+    </style>
+</head>
+<body class="theme-black">
+
+    <div class="dashboard-container">
+        <div class="chart-section">
+            <div id="loading-text">CONNECTING MARKET...</div>
+            <div id="canvas-wrapper">
+                <canvas id="custom-chart"></canvas>
+            </div>
+            <div class="floating-timeframe">
+                <div class="floating-timeframe-top">
+                    <svg id="timeframe-toggle-btn" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffcc00" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 5px; cursor: pointer;"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                    <input type="text" id="candle-time" value="1m" readonly>
+                </div>
+                <div id="quick-time-container" style="display:none; gap:4px; margin-top: 6px; width: 100%; grid-template-columns: repeat(3, 1fr);">
+                    <button class="quick-time-btn" data-val="1m">1m</button>
+                    <button class="quick-time-btn" data-val="5m">5m</button>
+                    <button class="quick-time-btn" data-val="15m">15m</button>
+                    <button class="quick-time-btn" data-val="1h">1h</button>
+                    <button class="quick-time-btn" data-val="4h">4h</button>
+                    <button class="quick-time-btn" data-val="1d">1d</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="bottom-controls">
+            <div style="width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 0 4px; margin-bottom: 2px;">
+                <button id="asset-selector-btn" style="background: transparent; color: var(--text-main); border: none; padding: 0; font-size: 15px; font-weight: bold; cursor: pointer; display: inline-flex; flex-direction: column; align-items: flex-start; gap: 4px; outline: none; vertical-align: middle;">
+                    <div style="display: flex; align-items: center; gap: 4px;">
+                        <span id="current-asset-name">BTCUSDT</span>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                    </div>
+                    <span id="asset-payout-rate" style="font-size: 10px; color: var(--text-main); font-weight: 800; background: var(--bg-btn); padding: 2px 6px; border-radius: 4px; letter-spacing: 0.05em;">Connecting...</span>
+                </button>
+                
+                <div style="flex-grow: 1; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                    <span id="balance-display" style="color: #0ecb81; font-weight: 800; font-size: 16px; letter-spacing: 0.05em;">$0.00</span>
+                    <span style="font-size:9px; color:var(--text-muted); font-weight:bold;">USDT BALANCE</span>
+                </div>
+                
+                <div style="display: flex; gap: 14px; align-items: center;">
+                    <button id="sound-toggle-btn" class="action-btn" aria-label="Toggle Sound" style="color: var(--text-muted); padding: 0 !important; background: transparent; height: auto;">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+                    </button>
+                    <button id="theme-toggle-btn" class="action-btn" aria-label="Toggle Theme" style="color: var(--text-main); padding: 0 !important; background: transparent; height: auto;">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+                    </button>
+                    <button id="show-trades-btn" class="action-btn btn-log" aria-label="Trades Log" style="padding: 0 !important; background: transparent; height: auto;">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+                    </button>
+                </div>
+            </div>
+
+            <div style="display: flex; width: 100%; justify-content: center; margin-bottom: 12px; margin-top: 10px;">
+                <span style="font-size: 13px; font-weight: 800; letter-spacing: 0.05em; color: var(--accent);">FUTURES & MARGIN</span>
+            </div>
+            
+            <div style="display: flex; width: 100%; gap: 12px; align-items: center; justify-content: space-between;">
+                <div style="display: flex; flex: 1; flex-direction: column; gap: 4px;" id="inputs-options">
+                    <div style="display: flex; width: 100%; gap: 8px;">
+                        <div style="display:flex; flex:1; align-items:center; background:var(--bg-btn); border-radius:24px; padding:0 12px; height: 52px;">
+                            <span style="color:var(--text-muted); font-weight:bold; font-size:12px; margin-right:8px;">QTY</span>
+                            <input type="number" id="trade-amount" value="1" placeholder="Quantity" step="1" style="font-size: 16px; padding: 0; width: 100%; background: transparent; font-weight:bold;">
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                    <button id="trade-btn-long" class="action-btn btn-call" aria-label="Buy Long" style="background: rgba(14,203,129,0.1); border: none; padding: 6px 12px !important; display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 24px; min-width: 80px; height: 52px;">
+                        <span style="font-weight:900; font-size:14px; color:#0ecb81; margin-bottom: 2px;">BUY</span>
+                        <span style="font-size:10px; color:var(--text-main);">LONG</span>
+                    </button>
+                    <button id="trade-btn-short" class="action-btn btn-put" aria-label="Sell Short" style="background: rgba(246,70,93,0.1); border: none; padding: 6px 12px !important; display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 24px; min-width: 80px; height: 52px;">
+                        <span style="font-weight:900; font-size:14px; color:#f6465d; margin-bottom: 2px;">SELL</span>
+                        <span style="font-size:10px; color:var(--text-main);">SHORT</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div id="tradeModalOverlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:2001; backdrop-filter: blur(2px);"></div>
+    <div id="tradeModal" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); width:90vw; max-width:420px; height:500px; background:var(--bg-panel); border-radius: 32px; z-index:2002; flex-direction:column; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+        <div style="padding:15px 20px; color:var(--accent); font-weight:800; font-size:14px; display:flex; justify-content:space-between; align-items:center; border-bottom: 1px solid var(--grid-line);">
+            <span>OPEN POSITIONS</span>
+            <button id="close-modal-btn" style="background:transparent; border:none; color:var(--accent); cursor:pointer; font-size:18px;">✕</button>
+        </div>
+        <div id="tradeList" style="flex:1; overflow-y:auto; padding:15px; display:flex; flex-direction:column; gap:10px; background:var(--bg-panel);">
+            <div style="color:var(--text-muted); text-align:center; padding:20px; font-size:12px; font-weight:bold;">LOADING POSITIONS...</div>
+        </div>
+    </div>
+
+    <div id="assetModalOverlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:2001; backdrop-filter: blur(2px);"></div>
+    <div id="assetModal" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); width:90vw; max-width:420px; height:75vh; background:var(--bg-panel); border-radius: 32px; z-index:2002; flex-direction:column; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+        <div style="padding:15px 20px; color:var(--accent); font-weight:800; font-size:14px; display:flex; justify-content:space-between; align-items:center; border-bottom: 1px solid var(--grid-line);">
+            <span>MARKETS</span>
+            <button id="close-asset-modal-btn" style="background:transparent; border:none; color:var(--accent); cursor:pointer; font-size:18px;">✕</button>
+        </div>
+        <div id="assetList" style="flex:1; overflow-y:auto; padding:20px; display:flex; flex-direction:column;">
+            <div class="asset-category">
+                <div class="category-title">Perpetual Futures</div>
+                <div class="category-grid" id="asset-container-futures">
+                    <button class="asset-select-btn active" data-val="BTCUSDT">BTC/USDT</button>
+                    <button class="asset-select-btn" data-val="ETHUSDT">ETH/USDT</button>
+                    <button class="asset-select-btn" data-val="SOLUSDT">SOL/USDT</button>
+                    <button class="asset-select-btn" data-val="XRPUSDT">XRP/USDT</button>
+                    <button class="asset-select-btn" data-val="DOGEUSDT">DOGE/USDT</button>
+                    <button class="asset-select-btn" data-val="ADAUSDT">ADA/USDT</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- DELTA EXCHANGE API SETTINGS ---
+                const API_KEY = "3tm5zmv8yZS5NzhM2Ah4VreKMej0dA";
+        
+                // ⚠️ IMPORTANT: Delta Exchange REQUIRES your API Secret to fetch balances and place trades. 
+                const API_SECRET = "WaqFUSbZUwjb2A4SWuajnieITCoGb7jQC54Dz5NVVbVAvesp9HNECklJ0R6j"; 
+
+        const REST_URL = "https://api.delta.exchange";
+        const WS_URL = "wss://socket.delta.exchange";
+
+        let ws;
+        let currentPair = "BTCUSDT";
+        let marketData = {};
+        let productMap = {}; // Maps Symbol to Delta Product ID
+        let currentWsSub = null;
+        let soundEnabled = true;
+
+        // Sound Toggle
+        const soundBtn = document.getElementById('sound-toggle-btn');
+        soundBtn.style.color = 'var(--accent)';
+        soundBtn.addEventListener('click', () => {
+            soundEnabled = !soundEnabled;
+            soundBtn.style.color = soundEnabled ? 'var(--accent)' : 'var(--text-muted)';
+        });
+
+        function playAlert(type) {
+            if(!soundEnabled) return;
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain); gain.connect(ctx.destination);
+                if(type === 'buy') { osc.frequency.value = 400; osc.type = 'sine'; gain.gain.value=0.1; osc.start(); osc.stop(ctx.currentTime + 0.1); }
+                else if(type === 'close') { osc.frequency.value = 800; osc.type = 'triangle'; gain.gain.value=0.1; osc.start(); osc.stop(ctx.currentTime + 0.3); }
+            } catch(e) {}
+        }
+
+        // HMAC SHA256 Signature Generator for Private Delta Endpoints
+        function generateSignature(method, timestamp, path, payload = "") {
+            const signatureData = method + timestamp + path + "" + payload;
+            return CryptoJS.HmacSHA256(signatureData, API_SECRET).toString(CryptoJS.enc.Hex);
+        }
+
+        // Authenticated Request Handler
+        async function deltaRestAuth(method, path, bodyObj = null) {
+            if (!API_SECRET || API_SECRET === "") {
+                console.warn("API Secret is missing. Cannot call private endpoint:", path);
+                return null;
+            }
+
+            const timestamp = Date.now().toString();
+            const payloadStr = bodyObj ? JSON.stringify(bodyObj) : "";
+            const signature = generateSignature(method, timestamp, path, payloadStr);
+            
+            const headers = {
+                            'Accept': 'application/json',
+                            'api-key': API_KEY,
+                            'timestamp': timestamp,
+                            'signature': signature,
+                            'Content-Type': 'application/json'
+                        };
+
+            const options = { method, headers };
+            if (bodyObj) options.body = payloadStr;
+
+            try {
+                            const res = await fetch(REST_URL + path, options);
+                            return await res.json();
+                        } catch(e) {
+                            console.error("Delta REST Error", e);
+                            return { success: false, error: e.message || "Network/CORS error" };
+                        }
+        }
+
+        // Initial Setup Fetch (Public API)
+        async function initDeltaProducts() {
+            try {
+                let res = await fetch(REST_URL + "/v2/products");
+                let json = await res.json();
+                if (json.success && json.result) {
+                    json.result.forEach(p => { productMap[p.symbol] = p.id; });
+                }
+            } catch(e) { console.error("Failed to load product mappings", e); }
+        }
+
+        async function fetchBalance() {
+                    const res = await deltaRestAuth("GET", "/v2/wallet/balances");
+                    if (res && res.success && res.result) {
+                        let usdtBal = res.result.find(b => b.asset_symbol === 'USDT');
+                        if (usdtBal) {
+                            document.getElementById('balance-display').innerText = `$${parseFloat(usdtBal.balance).toFixed(2)}`;
+                        }
+                    } else {
+                        document.getElementById('balance-display').innerText = `ERR`;
+                        document.getElementById('balance-display').style.color = '#f6465d';
+                    }
+                }
+
+        async function fetchPositions() {
+                    const list = document.getElementById('tradeList');
+                    if (!API_SECRET) {
+                        list.innerHTML = `<div style="color:#f6465d; text-align:center; padding:20px; font-size:12px; font-weight:bold;">API SECRET REQUIRED IN SCRIPT TO VIEW POSITIONS</div>`;
+                        return;
+                    }
+            
+                    const res = await deltaRestAuth("GET", "/v2/positions/margined");
+                    if (res && res.success && res.result) {
+                        let openPos = res.result.filter(p => parseFloat(p.size) !== 0);
+                
+                        if (openPos.length === 0) {
+                            list.innerHTML = '<div style="color:var(--text-muted); text-align:center; padding:20px; font-size:12px; font-weight:bold; letter-spacing:0.05em;">NO OPEN POSITIONS</div>';
+                            return;
+                        }
+                
+                        let html = '';
+                        openPos.forEach(p => {
+                            let size = parseFloat(p.size);
+                            let side = size > 0 ? 'LONG' : 'SHORT';
+                            let color = side === 'LONG' ? '#0ecb81' : '#f6465d';
+                            let pnl = parseFloat(p.realized_pnl || 0) + parseFloat(p.unrealized_pnl || 0);
+                            let pnlColor = pnl >= 0 ? '#0ecb81' : '#f6465d';
+                    
+                            html += `
+                            <div style="display:flex; justify-content:space-between; background:var(--bg-btn); padding:12px; border-radius:16px; border-left:4px solid ${color}; margin-bottom:10px;">
+                                <div style="display:flex; flex-direction:column; gap:4px; align-items:flex-start;">
+                                    <span style="font-weight:bold; color:var(--text-main); font-size:12px;">${p.symbol} <span style="color:${color}; font-size:10px;">[${side}]</span></span>
+                                    <span style="color:#aaa; font-size:10px;">QTY: ${Math.abs(size)}</span>
+                                </div>
+                                <div style="display:flex; flex-direction:column; gap:4px; text-align:right;">
+                                    <span style="font-weight:bold; font-size:12px; color:var(--text-muted);">PnL</span>
+                                    <span style="font-weight:bold; font-size:12px; color:${pnlColor};">$${pnl.toFixed(2)}</span>
+                                </div>
+                            </div>`;
+                        });
+                        list.innerHTML = html;
+                    } else {
+                                            let errMsg = res ? JSON.stringify(res, null, 2) : "Network/CORS Error";
+                                            list.innerHTML = `<div style="color:#f6465d; text-align:center; padding:20px; font-size:12px; font-weight:bold;">API ERROR:<br><pre style="text-align:left; font-size:10px; overflow-x:auto;">${errMsg}</pre></div>`;
+                                        }
+                }
+
+        // Order Execution
+        async function executeTrade(side) {
+            if (!API_SECRET || API_SECRET === "") {
+                alert("⚠️ DELTA EXCHANGE REQUIRES YOUR API SECRET.\n\nPlease edit the HTML file and paste your API_SECRET into the configuration block at the top of the script.");
+                return;
+            }
+
+            let productId = productMap[currentPair];
+            if (!productId) {
+                alert(`Error: Product ID not found for ${currentPair}. Market may not exist.`);
+                return;
+            }
+            
+            let qty = parseFloat(document.getElementById('trade-amount').value);
+            if(isNaN(qty) || qty <= 0) {
+                alert("Please enter a valid Quantity."); return;
+            }
+            
+            let payload = {
+                product_id: productId,
+                size: qty,
+                side: side,
+                order_type: "market_order"
+            };
+            
+            const res = await deltaRestAuth("POST", "/v2/orders", payload);
+                        if (res && res.success) {
+                            playAlert('buy');
+                            alert(`Successfully placed MARKET ${side.toUpperCase()} for ${qty} ${currentPair}.`);
+                            fetchBalance();
+                            fetchPositions();
+                        } else {
+                                                    let errMsg = res ? JSON.stringify(res, null, 2) : "Network/CORS Error";
+                                                    alert("Delta API Error:\n\n" + errMsg + "\n\n(Remember: New API keys take 5 minutes to activate!)");
+                                                }
+                    }
+
+        document.getElementById('trade-btn-long').addEventListener('click', () => executeTrade("buy"));
+        document.getElementById('trade-btn-short').addEventListener('click', () => executeTrade("sell"));
+
+        // Modal Toggles
+        document.getElementById('show-trades-btn').addEventListener('click', () => {
+            document.getElementById('tradeModal').style.display = 'flex';
+            document.getElementById('tradeModalOverlay').style.display = 'block';
+            fetchPositions();
+        });
+        document.getElementById('close-modal-btn').addEventListener('click', () => {
+            document.getElementById('tradeModal').style.display = 'none';
+            document.getElementById('tradeModalOverlay').style.display = 'none';
+        });
+
+        // --- WEBSOCKET FOR MARKET DATA ---
+        function initWebSocket() {
+            ws = new WebSocket(WS_URL);
+            
+            ws.onopen = () => { subscribeToMarket(currentPair); };
+            
+            ws.onmessage = (msg) => {
+                const data = JSON.parse(msg.data);
+                
+                // Ticker logic (Top price bar)
+                if (data.type === 'v2/ticker') {
+                    let tick = data.data || data;
+                    if (tick.symbol === currentPair) {
+                        let price = tick.mark_price || tick.close;
+                        if(price) document.getElementById('asset-payout-rate').innerText = `Price: ${price}`;
+                    }
+                }
+                
+                // Candlestick parsing
+                if (data.type && data.type.startsWith('candlestick_')) {
+                    let cData = data.data || data;
+                    if (cData.symbol === currentPair) {
+                        document.getElementById('loading-text').style.display = 'none';
+
+                        let o = parseFloat(cData.open);
+                        let h = parseFloat(cData.high);
+                        let l = parseFloat(cData.low);
+                        let c = parseFloat(cData.close);
+                        
+                        // Safely parse Delta timestamp format
+                        let timeStr = cData.candle_start_time.toString();
+                        let timeSec = Math.floor(parseInt(timeStr) / (timeStr.length > 13 ? 1000000 : (timeStr.length > 10 ? 1000 : 1))); 
+                        
+                        if (!marketData[currentPair]) marketData[currentPair] = [];
+                        let candles = marketData[currentPair];
+                        
+                        let lastCandle = candles[candles.length - 1];
+                        
+                        if (!lastCandle || timeSec > lastCandle.time) {
+                            candles.push({ time: timeSec, open: o, high: h, low: l, close: c });
+                            if (candles.length > 150) candles.shift();
+                        } else if (timeSec === lastCandle.time) {
+                            lastCandle.high = Math.max(lastCandle.high, h);
+                            lastCandle.low = Math.min(lastCandle.low, l);
+                            lastCandle.close = c;
+                        }
+                        drawChart();
+                    }
+                }
+            };
+
+            ws.onclose = () => { setTimeout(initWebSocket, 3000); };
+        }
+
+        function subscribeToMarket(symbol) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                if (currentWsSub) {
+                    ws.send(JSON.stringify({
+                        type: "unsubscribe",
+                        payload: { channels: [currentWsSub, {name: "v2/ticker", symbols: [currentPair]}] }
+                    }));
+                }
+                
+                let res = document.getElementById('candle-time').value || '1m';
+                let channelName = `candlestick_${res}`;
+                
+                ws.send(JSON.stringify({
+                    type: "subscribe",
+                    payload: {
+                        channels: [
+                            { name: channelName, symbols: [symbol] },
+                            { name: "v2/ticker", symbols: [symbol] }
+                        ]
+                    }
+                }));
+                currentWsSub = { name: channelName, symbols: [symbol] };
+            }
+        }
+
+        // Timeframe Selector Logic
+        document.getElementById('timeframe-toggle-btn').addEventListener('click', () => {
+            const qt = document.getElementById('quick-time-container');
+            qt.style.display = qt.style.display === 'none' ? 'grid' : 'none';
+        });
+        document.getElementById('candle-time').addEventListener('click', () => {
+            document.getElementById('quick-time-container').style.display = 'grid';
+        });
+
+        document.querySelectorAll('.quick-time-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                let newVal = e.target.getAttribute('data-val');
+                document.getElementById('candle-time').value = newVal;
+                document.getElementById('quick-time-container').style.display = 'none';
+                
+                marketData[currentPair] = [];
+                document.getElementById('loading-text').style.display = 'block';
+                subscribeToMarket(currentPair);
+            });
+        });
+
+        // --- CANVAS RENDERER ---
+        let canvas = document.getElementById('custom-chart');
+        let ctx = canvas.getContext('2d');
+        let canvasWidth, canvasHeight;
+
+        function resizeCanvas() {
+            const wrapper = document.getElementById('canvas-wrapper');
+            canvasWidth = wrapper.clientWidth;
+            canvasHeight = wrapper.clientHeight;
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = canvasWidth * dpr;
+            canvas.height = canvasHeight * dpr;
+            ctx.scale(dpr, dpr);
+            canvas.style.width = `${canvasWidth}px`;
+            canvas.style.height = `${canvasHeight}px`;
+            drawChart();
+        }
+        window.addEventListener('resize', resizeCanvas);
+
+        function drawChart() {
+            if (!ctx) return;
+            ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+
+            const candles = marketData[currentPair] || [];
+            if (candles.length === 0) return;
+
+            const yAxisWidth = 60;
+            const xAxisHeight = 25;
+            const chartAreaWidth = canvasWidth * 0.70;
+            const chartHeight = canvasHeight - xAxisHeight;
+            const candleWidth = 6;
+            const candleSpacing = 4;
+            const totalCandleWidth = candleWidth + candleSpacing;
+            const maxVisibleCandles = Math.floor(chartAreaWidth / totalCandleWidth);
+            const visibleCandles = candles.slice(-maxVisibleCandles);
+
+            let minPrice = Infinity;
+            let maxPrice = -Infinity;
+            visibleCandles.forEach(c => {
+                if (c.low < minPrice) minPrice = c.low;
+                if (c.high > maxPrice) maxPrice = c.high;
+            });
+
+            const priceRange = maxPrice - minPrice || 1;
+            const paddedMin = minPrice - (priceRange * 0.1);
+            const paddedMax = maxPrice + (priceRange * 0.1);
+            const paddedRange = paddedMax - paddedMin;
+
+            function getY(price) { return chartHeight - ((price - paddedMin) / paddedRange) * chartHeight; }
+
+            ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--text-muted').trim();
+            ctx.font = '11px sans-serif';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+
+            const dec = paddedMax < 1 ? 5 : (paddedMax < 1000 ? 3 : 2);
+
+            for(let i=1; i<6; i++) {
+                let yLine = (chartHeight / 6) * i;
+                ctx.strokeStyle = getComputedStyle(document.body).getPropertyValue('--grid-line').trim();
+                ctx.lineWidth = 0.2;
+                ctx.beginPath();
+                ctx.moveTo(0, yLine);
+                ctx.lineTo(canvasWidth - yAxisWidth, yLine);
+                ctx.stroke();
+
+                let priceAtLine = paddedMax - (paddedRange * (i/6));
+                ctx.fillText(priceAtLine.toFixed(dec), canvasWidth - yAxisWidth + 6, yLine);
+            }
+
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+
+            for (let i = 0; i < visibleCandles.length; i++) {
+                const c = visibleCandles[i];
+                const isUp = c.close >= c.open;
+                const color = isUp ? '#0ecb81' : '#f6465d';
+                
+                ctx.fillStyle = color;
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 1.5;
+
+                const x = chartAreaWidth - ((visibleCandles.length - i) * totalCandleWidth);
+                const yOpen = getY(c.open);
+                const yClose = getY(c.close);
+                const bodyTop = Math.min(yOpen, yClose);
+                const bodyHeight = Math.max(1, Math.max(yOpen, yClose) - bodyTop);
+
+                ctx.beginPath();
+                ctx.moveTo(x + candleWidth / 2, getY(c.high));
+                ctx.lineTo(x + candleWidth / 2, getY(c.low));
+                ctx.stroke();
+                ctx.fillRect(x, bodyTop, candleWidth, bodyHeight);
+
+                if ((i % 12 === 0 && (visibleCandles.length - 1 - i) > 6) || i === visibleCandles.length - 1) {
+                    if (i === visibleCandles.length - 1) ctx.textAlign = 'right';
+                    else ctx.textAlign = 'center';
+
+                    const date = new Date(c.time * 1000);
+                    const hours = date.getHours().toString().padStart(2, '0');
+                    const mins = date.getMinutes().toString().padStart(2, '0');
+                    
+                    ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--text-muted').trim();
+                    ctx.fillText(`${hours}:${mins}`, x + candleWidth / 2, chartHeight + 6);
+                }
+            }
+
+            const lastCandle = visibleCandles[visibleCandles.length - 1];
+            const currentY = getY(lastCandle.close);
+            const boxColor = lastCandle.close >= lastCandle.open ? '#0ecb81' : '#f6465d';
+
+            ctx.strokeStyle = boxColor;
+            ctx.setLineDash([2, 4]);
+            ctx.beginPath();
+            ctx.moveTo(0, currentY);
+            ctx.lineTo(canvasWidth - yAxisWidth, currentY);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            ctx.fillStyle = boxColor;
+            ctx.fillRect(canvasWidth - yAxisWidth, currentY - 10, yAxisWidth, 20);
+            
+            ctx.fillStyle = '#fff';
+            ctx.textAlign = 'center';
+            ctx.font = 'bold 11px sans-serif';
+            ctx.fillText(lastCandle.close.toFixed(dec), canvasWidth - (yAxisWidth / 2) + 2, currentY - 4);
+        }
+
+        // --- ASSET SELECTOR LOGIC ---
+        document.getElementById('asset-selector-btn').addEventListener('click', () => {
+            document.getElementById('assetModal').style.display = 'flex';
+            document.getElementById('assetModalOverlay').style.display = 'block';
+        });
+
+        const closeAssetModal = () => {
+            document.getElementById('assetModal').style.display = 'none';
+            document.getElementById('assetModalOverlay').style.display = 'none';
+        };
+
+        document.getElementById('close-asset-modal-btn').addEventListener('click', closeAssetModal);
+        document.getElementById('assetModalOverlay').addEventListener('click', closeAssetModal);
+
+        document.querySelectorAll('.asset-select-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                document.querySelectorAll('.asset-select-btn').forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                
+                const newPair = e.target.getAttribute('data-val');
+                document.getElementById('current-asset-name').innerText = e.target.innerText;
+                document.getElementById('asset-payout-rate').innerText = 'Connecting...';
+                
+                currentPair = newPair;
+                marketData[currentPair] = [];
+                document.getElementById('loading-text').style.display = 'block';
+                
+                subscribeToMarket(newPair);
+                closeAssetModal();
+            });
+        });
+
+        // Theme Toggle
+        let isDark = true;
+        document.getElementById('theme-toggle-btn').addEventListener('click', () => {
+            isDark = !isDark;
+            document.body.className = isDark ? 'theme-black' : 'theme-white';
+            drawChart(); 
+        });
+
+        // Boot
+        initDeltaProducts().then(() => {
+            fetchBalance();
+        });
+        
+        initWebSocket();
+        setTimeout(resizeCanvas, 100);
+
+    </script>
+</body>
+</html>
