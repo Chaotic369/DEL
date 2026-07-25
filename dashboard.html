@@ -369,13 +369,13 @@
         // Authenticated Request Handler
         async function deltaRestAuth(method, path, bodyObj = null) {
             if (!API_SECRET || API_SECRET === "") {
-                console.warn("API Secret is missing. Cannot call private endpoint:", path);
-                return null;
-            }
+                            console.warn("API Secret is missing. Cannot call private endpoint:", path);
+                            return null;
+                        }
 
-            const timestamp = Date.now().toString();
-            const payloadStr = bodyObj ? JSON.stringify(bodyObj) : "";
-            const signature = generateSignature(method, timestamp, path, payloadStr);
+                        const timestamp = Math.floor(Date.now() / 1000).toString();
+                        const payloadStr = bodyObj ? JSON.stringify(bodyObj) : "";
+                        const signature = generateSignature(method, timestamp, path, payloadStr);
             
             const headers = {
                             'Accept': 'application/json',
