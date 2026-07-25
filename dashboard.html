@@ -1,3 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Delta API Mini Trader</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #0b0e11;
+            color: #eaecef;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .container {
+            width: 100%;
+            max-width: 500px;
+            background: #181a20;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            box-sizing: border-box;
+        }
+        h2 { margin-top: 0; color: #6C5CE7; text-align: center; }
+        .form-group { margin-bottom: 12px; }
+        label { display: block; font-size: 12px; color: #848e9c; margin-bottom: 4px; font-weight: bold; }
+        input, select {
+            width: 100%;
+            padding: 10px;
+            background: #2b3139;
+            border: 1px solid #333;
+            color: #fff;
+            border-radius: 6px;
+            box-sizing: border-box;
+            font-family: monospace;
+        }
+        canvas {
+            width: 100%;
+            height: 150px;
+            background: #0b0e11;
+            border-radius: 6px;
+            margin-top: 10px;
+            margin-bottom: 20px;
+            border: 1px solid #2b3139;
+        }
+        .trade-controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .btn-buy, .btn-sell {
+            flex: 1;
+            padding: 14px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: bold;
+            color: white;
+            cursor: pointer;
+        }
+        .btn-buy { background: #0ecb81; }
+        .btn-buy:hover { background: #0b9e65; }
+        .btn-sell { background: #f6465d; }
+        .btn-sell:hover { background: #c93649; }
+        .log-box {
+            margin-top: 20px;
+            background: #0b0e11;
+            border: 1px solid #2b3139;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            color: #0ecb81;
+            height: 100px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            font-family: monospace;
+        }
+        .price-display {
+            font-size: 24px;
+            font-weight: bold;
+            text-align: center;
+            margin: 10px 0;
+            color: #ffcc00;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Mini Delta Trader</h2>
+
+    <div class="form-group">
+        <label>Server</label>
+        <select id="server-url" onchange="switchServer()">
+            <option value="india">INDIA (api.india.delta.exchange)</option>
+            <option value="global">GLOBAL (api.delta.exchange)</option>
+        </select>
+    </div>
+
+    <div style="display: flex; gap: 10px;">
+        <div class="form-group" style="flex: 1;">
+            <label>API Key</label>
+            <input type="text" id="api-key" value="3tm5zmv8yZS5NzhM2Ah4VreKMej0dA">
+        </div>
+        <div class="form-group" style="flex: 1;">
+            <label>API Secret</label>
+            <input type="password" id="api-secret" value="WaqFUSbZUwjb2A4SWuajnieITCoGb7jQC54Dz5NVVbVAvesp9HNECklJ0R6j">
+        </div>
+    </div>
+
+    <div class="price-display" id="current-price">Connecting...</div>
+
+    <canvas id="chart-canvas"></canvas>
+
+    <div class="form-group">
+        <label>Amount / Quantity (BTCUSDT)</label>
+        <input type="number" id="trade-qty" value="1" step="1" style="font-size: 18px; text-align: center;">
+    </div>
+
+    <div class="trade-controls">
+        <button class="btn-buy" onclick="executeTrade('buy')">BUY / LONG</button>
+        <button class="btn-sell" onclick="executeTrade('sell')">SELL / SHORT</button>
+    </div>
+
+    <div class="log-box" id="log-output">System initialized... Select Server and ensure APIs are correct.</div>
+</div>
+
+<script>
     let REST_URL = "https://api.india.delta.exchange";
     let WS_URL = "wss://socket.india.delta.exchange";
     let ws = null;
@@ -162,191 +294,7 @@
     fetchProducts();
     initWebSocket();
     window.addEventListener('resize', drawChart);
-===SPLIT===
-    let REST_URL = "https://api.india.delta.exchange";
-    let WS_URL = "wss://public-socket.india.delta.exchange";
-    let ws = null;
-    let priceHistory = [];
-    let productId = null;
-    let pair = "BTCUSDT";
 
-    function log(msg) {
-        const out = document.getElementById('log-output');
-        const time = new Date().toLocaleTimeString();
-        out.innerText = `[${time}] ${msg}\n` + out.innerText;
-        console.log(msg);
-    }
-
-    function switchServer() {
-        const choice = document.getElementById('server-url').value;
-        if (choice === 'india') {
-            REST_URL = "https://api.india.delta.exchange";
-            WS_URL = "wss://public-socket.india.delta.exchange";
-        } else {
-            REST_URL = "https://api.delta.exchange";
-            WS_URL = "wss://public-socket.delta.exchange";
-        }
-        log(`Switched to ${choice.toUpperCase()} server.`);
-        fetchProducts();
-    }
-
-    // Canvas Chart Renderer
-    function drawChart() {
-        const canvas = document.getElementById('chart-canvas');
-        if (!canvas) return;
-        const ctx = canvas.getContext('2d');
-        const width = canvas.width = canvas.offsetWidth;
-        const height = canvas.height = canvas.offsetHeight;
-        
-        ctx.clearRect(0, 0, width, height);
-        if (priceHistory.length < 2) return;
-
-        const max = Math.max(...priceHistory);
-        const min = Math.min(...priceHistory);
-        const range = (max - min) || 1;
-
-        ctx.beginPath();
-        ctx.strokeStyle = '#6C5CE7';
-        ctx.lineWidth = 2;
-
-        const stepX = width / (priceHistory.length - 1);
-        
-        for (let i = 0; i < priceHistory.length; i++) {
-            const x = i * stepX;
-            const y = height - (((priceHistory[i] - min) / range) * (height - 10) + 5);
-            if (i === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
-        }
-        ctx.stroke();
-    }
-
-    function initWebSocket() {
-        if (ws) ws.close();
-        priceHistory = [];
-        drawChart();
-        document.getElementById('current-price').innerText = "Connecting...";
-
-        ws = new WebSocket(WS_URL);
-        ws.onopen = () => {
-            log(`WebSocket Connected. Subscribing to ${pair}...`);
-            ws.send(JSON.stringify({
-                type: "subscribe",
-                payload: { channels: [{ name: "v2/ticker", symbols: [pair] }] }
-            }));
-        };
-        ws.onmessage = (e) => {
-            const data = JSON.parse(e.data);
-            if (data.type === 'v2/ticker') {
-                const tick = data.data || data;
-                if (tick.symbol === pair && tick.mark_price) {
-                    const price = parseFloat(tick.mark_price);
-                    document.getElementById('current-price').innerText = `$${price.toFixed(2)}`;
-                    priceHistory.push(price);
-                    if (priceHistory.length > 50) priceHistory.shift();
-                    drawChart();
-                }
-            }
-        };
-        ws.onerror = (e) => log("WebSocket Error occurred.");
-        ws.onclose = () => log("WebSocket Disconnected.");
-    }
-
-    async function fetchProducts() {
-        try {
-            log(`Fetching products from ${REST_URL}...`);
-            const res = await fetch(REST_URL + '/v2/products');
-            const json = await res.json();
-            if (json.success && json.result) {
-                let product = json.result.find(p => p.symbol === pair);
-                
-                // Fallback to the first BTC pair if strict naming differs on the server
-                if (!product && json.result.length > 0) {
-                    product = json.result.find(p => p.symbol.includes('BTC'));
-                    if(product) pair = product.symbol;
-                }
-                
-                if (product) {
-                    productId = product.id;
-                    log(`Product mapping found: ${pair} -> ID: ${productId}`);
-                    document.getElementById('trade-qty').previousElementSibling.innerText = `Amount / Quantity (${pair})`;
-                } else {
-                    log(`Could not find a valid BTC product.`);
-                }
-            } else {
-                log(`Failed to fetch products: ${JSON.stringify(json)}`);
-            }
-            // Initialize websocket AFTER confirming the product symbol
-            initWebSocket();
-        } catch (e) {
-            log(`Error fetching products: ${e.message}`);
-        }
-    }
-
-    async function executeTrade(side) {
-        const apiKey = document.getElementById('api-key').value.trim();
-        const apiSecret = document.getElementById('api-secret').value.trim();
-        const qty = parseFloat(document.getElementById('trade-qty').value);
-
-        if (!apiKey || !apiSecret) {
-            alert("API Key and Secret required.");
-            return;
-        }
-        if (!productId) {
-            alert("Product ID not loaded yet. Check logs below.");
-            return;
-        }
-        if (isNaN(qty) || qty <= 0) {
-            alert("Invalid Quantity");
-            return;
-        }
-
-        log(`Attempting MARKET ${side.toUpperCase()} for QTY: ${qty} on ${pair}...`);
-
-        const method = "POST";
-        const path = "/v2/orders";
-        const timestamp = Math.floor(Date.now() / 1000).toString(); // SECONDS FIX APPLIED HERE
-        
-        const bodyObj = {
-            product_id: productId,
-            size: qty,
-            side: side,
-            order_type: "market_order"
-        };
-        const payloadStr = JSON.stringify(bodyObj);
-
-        // HMAC SHA256 Signature
-        const signatureData = method + timestamp + path + payloadStr;
-        const signature = CryptoJS.HmacSHA256(signatureData, apiSecret).toString(CryptoJS.enc.Hex);
-
-        const headers = {
-            'Accept': 'application/json',
-            'api-key': apiKey,
-            'timestamp': timestamp,
-            'signature': signature,
-            'Content-Type': 'application/json'
-        };
-
-        try {
-            const res = await fetch(REST_URL + path, { method, headers, body: payloadStr });
-            const json = await res.json();
-            
-            if (json.success) {
-                log(`✅ SUCCESS: ${side.toUpperCase()} order placed! Order ID: ${json.result.id}`);
-                alert(`SUCCESS! Order ID: ${json.result.id}`);
-            } else {
-                let errorMsg = json.error ? json.error.message : JSON.stringify(json);
-                if (json.error && json.error.code === 'invalid_api_key') {
-                    errorMsg = "INVALID API KEY. (Have 5 minutes passed since you generated it? Ensure you have the correct server selected).";
-                }
-                log(`❌ FAILED: ${errorMsg}`);
-                alert(`API Error:\n\n${errorMsg}`);
-            }
-        } catch (error) {
-            log(`⚠️ NETWORK ERROR: ${error.message}`);
-            alert(`Network Error: ${error.message}`);
-        }
-    }
-
-    // Boot
-    fetchProducts();
-    window.addEventListener('resize', drawChart);
+</script>
+</body>
+</html>
